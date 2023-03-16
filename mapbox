@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset='utf-8' />
+  <title></title>
+  <meta name='viewport' content='initial-scale=1,maximum-scale=1,user-scalable=no' />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.5.0/jquery.min.js"></script>
+  <script src='https://api.mapbox.com/mapbox-gl-js/v2.0.1/mapbox-gl.js'></script>
+  <link href='https://api.mapbox.com/mapbox-gl-js/v2.0.1/mapbox-gl.css' rel='stylesheet' />
+  <script src='https://npmcdn.com/csv2geojson@latest/csv2geojson.js'></script>
+  <script src='https://npmcdn.com/@turf/turf/turf.min.js'></script>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+    }
+
+    #map {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      width: 100%;
+    }
+
+    .mapboxgl-popup {
+      padding-bottom: 5px;
+    }
+
+    .mapboxgl-popup-close-button {
+      display: none;
+    }
+
+    .mapboxgl-popup-content {
+      font: 400 15px/22px 'DIN Pro Medium', 'Helvetica', DIN Pro Medium;
+      padding: 0;
+      width: 160px;
+      background-color: #c9dafd;
+    }
+
+    .mapboxgl-popup-content-wrapper {
+      padding: 1%;
+    }
+
+    .mapboxgl-popup-content h3 {
+      color: rgb(61, 59, 59);
+      text-align: center;
+      margin: 0;
+      display: block;
+      padding: 5px;
+      font-weight: 700;
+      margin-top: -5px;
+    }
+
+    .mapboxgl-popup-content h4 {
+      margin: 0;
+      display: block;
+      padding: 3px 0px 3px 9px;
+      font-weight: 400;
+      color: #063798;
+    }
+
+    .mapboxgl-container {
+      cursor: pointer;
+    }
+
+    .mapboxgl-popup-anchor-top>.mapboxgl-popup-content {
+      margin-top: 3px;
+    }
+
+    .mapboxgl-popup-anchor-top>.mapboxgl-popup-tip {
+      border-bottom-color: rgb(61, 59, 59);
+    }
+    
+    .rounded-rect {
+background: #c9dafd;
+border-radius: 10px;
+box-shadow: 0 0 50px -25px black;
+}
+ 
+.flex-center {
+position: absolute;
+display: flex;
+justify-content: center;
+align-items: center;
+}
+ 
+.flex-center.left {
+left: 0px;
+}
+ 
+.flex-center.right {
+right: 0px;
+}
+ 
+.sidebar-content {
+position: absolute;
+width: 95%;
+height: 95%;
+font-family: Arial, Helvetica, sans-serif;
+font-size: 32px;
+color: #063798;
+}
+ 
+.sidebar-toggle {
+position: absolute;
+width: 1.3em;
+height: 1.3em;
+overflow: visible;
+display: flex;
+justify-content: center;
+align-items: center;
+}
+ 
+.sidebar-toggle.left {
+right: -1.5em;
+}
+  
+.sidebar-toggle:hover {
+color: #063798;
+cursor: pointer;
+}
+ 
+.sidebar {
+transition: transform 1s;
+z-index: 1;
+width: 300px;
+height: 100%;
+}
+ 
+.left.collapsed {
+transform: translateX(-295px);
+}
+    .filter-group {
+        font: 12px/20px 'Helvetica Neue', Arial, Helvetica, sans-serif;
+        font-weight: 600;
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        z-index: 1;
+        border-radius: 3px;
+        width: 120px;
+        color: #063798;
+    }
+
+    .filter-group input[type='checkbox']:first-child + label {
+        border-radius: 3px 3px 0 0;
+    }
+
+    .filter-group label:last-child {
+        border-radius: 0 0 3px 3px;
+        border: none;
+    }
+
+    .filter-group input[type='checkbox'] {
+        display: none;
+    }
+
+    .filter-group input[type='checkbox'] + label {
+        background-color: #3386c0;
+        display: block;
+        cursor: pointer;
+        padding: 10px;
+        border-bottom: 1px solid rgba(0, 0, 0, 0.25);
+    }
+
+    .filter-group input[type='checkbox'] + label {
+        background-color: #9EBDFB;
+        text-transform: capitalize;
+    }
+
+    .filter-group input[type='checkbox'] + label:hover,
+    .filter-group input[type='checkbox']:checked + label {
+        background-color: #c9dafd;
+    }
+
+    .filter-group input[type='checkbox']:checked + label:before {
+        content: '✔';
+        margin-right: 5px;
+    }
+
+  </style>
+  <div id='map'></div>
+  <nav id="filter-group" class="filter-group"></nav>
+  <div id="left" class="sidebar flex-center left collapsed">
+<div class="sidebar-content rounded-rect flex-center">
+Left Sidebar
+<div class="sidebar-toggle rounded-rect left" onclick="toggleSidebar('left')">
+&rarr;
+</div>
+</div>
+</div>
+  
+  </head>
+  <body>
+  <script>
+
+    var transformRequest = (url, resourceType) => {
+      var isMapboxRequest =
+        url.slice(8, 22) === "api.mapbox.com" ||
+        url.slice(10, 26) === "tiles.mapbox.com";
+      return {
+        url: isMapboxRequest
+          ? url.replace("?", "?pluginName=sheetMapper&")
+          : url
+      };
+    };
+    
+    mapboxgl.accessToken = 'pk.eyJ1Ijoic3VuZ2FpLXdhdGNoIiwiYSI6ImNsY3p4eHNkNjEyYnAzbnRnZWxydG5zYmoifQ.l3U546_jq809vu5OAjsnZg'; //Mapbox token 
+    var map = new mapboxgl.Map({
+      container: 'map', 
+      style: 'mapbox://styles/sungai-watch/cld9sb85r000e01qpzlfiadie', 
+      center: [114.80494, -8.52663],
+      zoom: 8.4, 
+      transformRequest: transformRequest
+    });
+   
+function toggleSidebar(id) {
+const elem = document.getElementById(id);
+const collapsed = elem.classList.toggle('collapsed');
+const padding = {};
+padding[id] = collapsed ? 0 : 300; 
+map.easeTo({
+padding: padding,
+duration: 1000 
+});
+}
+ 
+map.on('load', () => {
+toggleSidebar('left');
+});
+    
+    $(document).ready(function () {
+      $.ajax({
+        type: "GET",
+        url: 'https://docs.google.com/spreadsheets/d/1mKJx_LD5wUgcwN23WWUsiYSNi2TzCPiYtzc9PG7wq1I/gviz/tq?tqx=out:csv&sheet=IllegalOpenDumps',
+        dataType: "text",
+        success: function (csvData) { makeGeoJSON(csvData); }
+      });
+ 
+      function makeGeoJSON(csvData) {
+        csv2geojson.csv2geojson(csvData, {
+          latfield: 'Latitude',
+          lonfield: 'Longitude',
+          delimiter: ','
+        }, function (err, data) {
+          map.on('load', function () {
+
+            map.addLayer({
+              'id': 'csvData',
+              'type': 'circle',
+              'source': {
+                'type': 'geojson',
+                'data': data
+              },
+              'paint': {
+                'circle-radius': 5,
+              
+              'circle-color': [
+              'match',
+              ['get', 
+               'Type'],
+               'Barrier',
+               '#fbb03b',
+'Cleanup',
+'#223b53',
+'Illegal Open Dump',
+'#e55e5e',
+/* other */ '#ccc'
+              ]
+              }
+});
+            map.on('click', 'csvData', function (e) {
+              var coordinates = e.features[0].geometry.coordinates.slice();
+
+              var description = `<h4>` + `<b>` + `ID: ` + `</b>` + e.features[0].properties.ID; 
+
+              while (Math.abs(e.lngLat.lng - coordinates[0]) > 180) {
+                coordinates[0] += e.lngLat.lng > coordinates[0] ? 360 : -360;
+              }
+
+              new mapboxgl.Popup()
+                .setLngLat(coordinates)
+                .setHTML(description)
+                .addTo(map);
+            });
+
+            map.on('mouseenter', 'csvData', function () {
+              map.getCanvas().style.cursor = 'pointer';
+            });    
+            map.on('mouseleave', 'places', function () {
+              map.getCanvas().style.cursor = '';
+            });                  
+  const filterGroup = document.getElementById('filter-group');     
+const input = document.createElement('input');
+                input.type = 'checkbox';
+                input.id = 'csvData';
+                input.checked = true;
+                filterGroup.appendChild(input);
+
+                const label = document.createElement('label');
+                label.setAttribute('for', 'csvData');
+                label.textContent =  'Type';
+               filterGroup.appendChild(label);
+                input.addEventListener('change', (e) => {
+                    map.setLayoutProperty(
+                        'csvData',
+                        'visibility',
+                        e.target.checked ? 'visible' : 'none'
+                    );
+                });          
+          });
+        });
+      };
+    });
+ </script>
+</body>
+</html>
